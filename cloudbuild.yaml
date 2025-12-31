@@ -1,0 +1,28 @@
+steps:
+  # Build the container image
+  # Note: Dockerfile is in deployment/ directory, cloudbuild.yaml is at project root
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/ai-frontier/ai-frontier:$SHORT_SHA'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/ai-frontier/ai-frontier:latest'
+      - '-f'
+      - 'deployment/Dockerfile'
+      - '.'
+
+  # Push the container image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '--all-tags'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/ai-frontier/ai-frontier'
+
+images:
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/ai-frontier/ai-frontier:$SHORT_SHA'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/ai-frontier/ai-frontier:latest'
+
+# Substitutions (set these when running: gcloud builds submit --substitutions=_REGION=us-central1)
+substitutions:
+  _REGION: 'us-central1'
