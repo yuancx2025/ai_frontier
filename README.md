@@ -1,325 +1,200 @@
-# AI News Aggregator
+# AI Frontier
 
-An intelligent news aggregation system that scrapes AI-related content from multiple sources (YouTube channels, RSS feeds), processes them with LLM-powered summarization, curates personalized digests based on user preferences, and delivers daily email summaries.
+An intelligent news aggregation system that scrapes AI-related content from multiple sources, categorizes it using LLM, and delivers personalized daily email digests based on user preferences.
 
-## Overview
+## What It Does
 
-This project aggregates AI news from multiple sources:
-- **YouTube Channels**: Scrapes videos and transcripts from configured channels
-- **RSS Feeds**: Monitors OpenAI and Anthropic blog posts
-- **Processing**: Converts content to markdown, generates summaries, and creates digests
-- **Curation**: Ranks articles by relevance to user profile using LLM
-- **Delivery**: Sends personalized daily email digests
+**AI Frontier** aggregates AI news and content from multiple sources:
+
+- **RSS Feeds**: OpenAI, Anthropic, Cursor, Windsurf, DeepMind, XAI, NVIDIA
+- **YouTube Channels**: Configurable channels (default: AI-focused creators)
+
+The system processes this content through the following pipeline:
+
+1. **Scrapes** articles and videos from configured sources
+2. **Categorizes** content into 9 categories (technique, research, education, announcement, analysis, tutorial, opinion, news, others)
+3. **Scores** relevance to each user's profile (background, preferences, expertise level)
+4. **Generates** personalized email digests with top-ranked articles
+5. **Delivers** daily summaries via AWS SES
+
+### Content Categories
+
+Content is automatically classified into:
+- **Technique**: New methods, algorithms, or technical approaches
+- **Research**: Research papers, academic work, or scientific findings
+- **Education**: Educational content, tutorials, or learning materials
+- **Announcement**: Product launches, company news, or official announcements
+- **Analysis**: Deep dives, detailed analysis, or investigative pieces
+- **Tutorial**: How-to guides, step-by-step instructions, or walkthroughs
+- **Opinion**: Opinion pieces, editorials, or personal perspectives
+- **News**: General news updates or current events
+- **Others**: Content that doesn't fit into the above categories
+
+Users can select their preferred categories and set preferences (e.g., prefer practical applications, avoid marketing hype) through the Gradio UI.
 
 ## Architecture
 
 ```mermaid
-graph LR
-    A[Sources<br/>YouTube<br/>RSS Feeds] --> B[Scrapers<br/>BaseScraper<br/>Registry Pattern]
-    B --> C[(Database<br/>PostgreSQL)]
-    C --> D[Processors<br/>Markdown<br/>Transcripts<br/>Digests]
-    D --> C
-    C --> E[Curator<br/>LLM Ranking]
-    E --> F[Email<br/>Personalized Digest]
-    F --> G[Delivery<br/>Gmail SMTP]
+flowchart TD
+    Sources[RSS Feeds & YouTube] -->|Scrape| Scraper[Scraper Registry]
+    Scraper -->|Save Raw Content| DB[(PostgreSQL)]
     
-    style A fill:#e1f5ff
-    style B fill:#fff4e1
-    style C fill:#e8f5e9,stroke:#4caf50,stroke-width:3px
-    style D fill:#fff4e1
-    style E fill:#f3e5f5
-    style F fill:#f3e5f5
-    style G fill:#ffe1f5
+    DB -->|Fetch Articles| Digest[Digest Processor]
+    Digest -->|LLM Categorization| Curator[Curator Agent]
+    Curator -->|Score & Rank| DB
+    
+    User[User Profile] -->|Select Preferences| UI[Gradio UI]
+    UI -->|Save| UserDB[(User Table)]
+    
+    DailyRunner[Daily Runner] -->|Fetch Users| UserDB
+    DailyRunner -->|Generate Digest| EmailAgent[Email Agent]
+    EmailAgent -->|Format HTML| Render[Email Render]
+    Render -->|Send| SES[AWS SES]
+    SES -->|Deliver| UserEmails[User Emails]
 ```
-
-## How It Works
 
 ### Pipeline Flow
 
 1. **Scraping** (`app/runner.py`)
-   - Runs all registered scrapers
-   - Fetches articles/videos from configured sources
+   - Runs all registered scrapers (RSS feeds + YouTube)
+   - Fetches articles/videos from last 24 hours
    - Saves raw content to database
 
-2. **Processing** (`app/services/process_*.py`)
-   - **Anthropic**: Converts HTML articles to markdown
-   - **YouTube**: Fetches video transcripts
-   - **Digests**: Generates summaries using LLM
+2. **Digest Generation** (`app/services/process_digest.py`)
+   - Processes raw articles/videos
+   - Uses LLM to generate summaries
+   - Categorizes content into 9 categories
+   - Scores relevance to user profiles
 
-3. **Curation** (`app/services/process_curator.py`)
-   - Ranks digests by relevance to user profile
-   - Uses LLM to score and rank articles
+3. **Email Generation** (`app/services/process_email.py`)
+   - Selects top N articles by relevance score
+   - Generates personalized introduction
+   - Formats content as HTML email
 
-4. **Email Generation** (`app/services/process_email.py`)
-   - Creates personalized email digest
-   - Selects top N articles
-   - Generates introduction and formats content
-   - Marks digests as sent to prevent duplicates
-
-5. **Delivery** (`app/services/email.py`)
-   - Sends HTML email via Gmail SMTP
+4. **Delivery** (`app/services/ses_email.py` + `app/email/render.py`)
+   - Renders HTML email with styling
+   - Sends via AWS SES
+   - Tracks sent digests to prevent duplicates
 
 ### Daily Pipeline
 
-The `run_daily_pipeline()` function orchestrates all steps:
-- Ensures database tables exist
+The `run_daily_pipeline()` function orchestrates:
 - Scrapes all sources
-- Processes content (markdown, transcripts)
-- Creates digests
-- Sends email
+- Creates digests with relevance scores
+- Generates and sends personalized email digests
 
 ## Project Structure
 
 ```
 app/
-├── agent/              # LLM agents for processing
+├── agent/              # LLM agents
 │   ├── base.py        # Base agent class
-│   ├── curator_agent.py   # Article ranking
-│   ├── digest_agent.py    # Summary generation
-│   └── email_agent.py     # Email content generation
+│   ├── curator_digest_agent.py   # Content categorization & ranking
+│   └── email_agent.py            # Email content generation
 ├── database/          # Database layer
 │   ├── models.py      # SQLAlchemy models
-│   ├── repository.py # Data access layer
-│   └── connection.py  # DB connection & environment
+│   ├── connection.py  # DB connection
+│   └── *_repository.py # Data access layer
+├── email/             # Email rendering
+│   └── render.py      # HTML/CSS formatting
 ├── profiles/          # User profile configuration
 │   └── user_profile.py
 ├── scrapers/          # Content scrapers
-│   ├── base.py        # Base scraper for RSS feeds
-│   ├── anthropic.py   # Anthropic RSS scraper
-│   ├── openai.py      # OpenAI RSS scraper
+│   ├── base.py        # Base RSS scraper
+│   ├── openai.py      # OpenAI RSS
+│   ├── anthropic.py   # Anthropic RSS
+│   ├── cursor.py      # Cursor RSS
+│   ├── windsurf.py    # Windsurf RSS
+│   ├── deepmind.py    # DeepMind RSS
+│   ├── xai.py         # XAI RSS
+│   ├── nvdia.py       # NVIDIA RSS
 │   └── youtube.py     # YouTube channel scraper
 ├── services/          # Processing services
-│   ├── base.py        # Base process service
-│   ├── process_anthropic.py
-│   ├── process_youtube.py
-│   ├── process_digest.py
-│   ├── process_curator.py
-│   ├── process_email.py
-│   └── email.py       # Email sending
+│   ├── process_digest.py  # Digest generation
+│   ├── process_email.py   # Email orchestration
+│   └── ses_email.py       # AWS SES client
+├── ui/                 # User interface
+│   └── profile_ui.py   # Gradio UI for user profiles
 ├── daily_runner.py    # Main pipeline orchestrator
 └── runner.py          # Scraper registry & execution
 ```
 
-## Adding New Scrapers
-
-### RSS Feed Scraper (Easiest)
-
-Create a new file in `app/scrapers/`:
-
-```python
-from typing import List
-from .base import BaseScraper, Article
-
-class MyArticle(Article):
-    pass
-
-class MyScraper(BaseScraper):
-    @property
-    def rss_urls(self) -> List[str]:
-        return ["https://example.com/feed.xml"]
-
-    def get_articles(self, hours: int = 24) -> List[MyArticle]:
-        return [MyArticle(**a.model_dump()) for a in super().get_articles(hours)]
-```
-
-Then register it in `app/runner.py`:
-
-```python
-from .scrapers.my_scraper import MyScraper
-
-def _save_my_articles(scraper, repo, hours):
-    return _save_rss_articles(scraper, repo, hours, repo.bulk_create_my_articles)
-
-SCRAPER_REGISTRY = [
-    # ... existing scrapers
-    ("my_source", MyScraper(), _save_my_articles),
-]
-```
-
-### Custom Scraper
-
-For non-RSS sources, inherit from the base pattern:
-
-```python
-class CustomScraper:
-    def get_articles(self, hours: int = 24) -> List[Article]:
-        # Your custom scraping logic
-        pass
-```
-
-## Setup
+## Quick Start
 
 ### Prerequisites
 
 - Python 3.11+
-- PostgreSQL database
-- Google Gemini API key
-- Gmail app password (for email sending)
-- Webshare proxy credentials (optional, for YouTube transcript fetching)
+- Docker & Docker Compose (for local database)
+- Google Gemini API key ([Get one here](https://makersuite.google.com/app/apikey))
+- AWS SES configured (for email sending)
 
+### Setup
 
-### UV Environment Quick Reference
-
-**Install UV:**
-```bash
-# macOS/Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Windows (PowerShell)
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# Or with pip/brew
-pip install uv  # or: brew install uv
-```
-
-**Core Commands:**
-
-```bash
-# Install dependencies (creates .venv/ automatically)
-uv sync
-
-# Run Python scripts (no activation needed)
-uv run main.py
-uv run python -m app.runner
-
-# Add/remove dependencies
-uv add package-name          # Adds to pyproject.toml and installs
-uv add --dev package-name    # Add dev dependency
-uv remove package-name       # Remove dependency
-
-# Update dependencies
-uv sync --upgrade            # Update all packages
-uv add package-name@latest   # Update specific package
-
-# View installed packages
-uv pip list
-```
-
-
-**Optional: Activate Environment (for IDEs)**
-```bash
-source .venv/bin/activate     # macOS/Linux
-.venv\Scripts\activate        # Windows
-```
-
-### Installation
-
-1. Clone the repository
-2. Install UV
-3. Install dependencies:
+1. **Clone and install dependencies:**
    ```bash
+   git clone <repo-url>
+   cd ai-frontier
    uv sync
    ```
-   
-   This will:
-   - Create a virtual environment (`.venv/`)
-   - Install Python 3.11+ if needed
-   - Install all dependencies from `pyproject.toml`
 
-3. Configure environment variables (copy `app/example.env` to `.env`):
+2. **Start PostgreSQL with Docker Compose:**
    ```bash
-   GEMINI_API_KEY=your_key
-   MY_EMAIL=your_email@gmail.com
-   APP_PASSWORD=your_gmail_app_password
-   DATABASE_URL=postgresql://user:pass@host:port/db
-   ENVIRONMENT=LOCAL  # Optional: auto-detected from DATABASE_URL if contains cloud provider domains
-   
-   # Optional: Webshare Proxy (for YouTube transcript fetching)
-   # Get credentials from https://www.webshare.io/
-   WEBSHARE_USERNAME=your_username
-   WEBSHARE_PASSWORD=your_password
-   ```
-   
-   **Note**: Webshare proxy is optional. If not provided, YouTube transcript fetching will work without a proxy but may be rate-limited.
-   
-   **Note**: Get your Gemini API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
-
-4. **Initialize database tables** (REQUIRED before running scrapers):
-   ```bash
-   uv run python -m app.database.create_tables
-   ```
-   
-   **Important**: The database tables must be created before running scrapers, otherwise you'll get 0 results.
-   
-   Or check database connection:
-   ```bash
-   uv run python -m app.database.check_connection
+   docker-compose up -d
    ```
 
-5. Configure YouTube channels in your `.env` file (see `app/example.env` for format)
+3. **Configure environment variables:**
+   ```bash
+   cp app/example.env .env
+   # Edit .env and add:
+   # - GEMINI_API_KEY
+   # - AWS_REGION, SES_FROM_EMAIL, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+   # - YOUTUBE_API_KEY (optional, for YouTube scraping)
+   ```
 
-6. Update user profile in `app/profiles/user_profile.py`
+4. **Initialize database tables:**
+   ```bash
+   uv run python -c "from app.database.connection import create_all_tables; create_all_tables()"
+   ```
 
-### Running
+5. **Create user profile (via Gradio UI):**
+   ```bash
+   uv run python -m ui.profile_ui
+   ```
+   Open the URL shown and configure your preferences.
 
-**Full pipeline:**
+6. **Run the pipeline:**
+   ```bash
+   uv run python -m app.daily_runner
+   ```
+
+### Running Individual Steps
+
 ```bash
-uv run main.py
-```
-
-**Individual steps:**
-```bash
-# Scraping
+# Scrape content
 uv run python -m app.runner
 
-# Processing
-uv run python -m app.services.process_anthropic
-uv run python -m app.services.process_youtube
+# Generate digests
 uv run python -m app.services.process_digest
 
-# Curation
-uv run python -m app.services.process_curator
-
-# Email
+# Send email digest
 uv run python -m app.services.process_email
 ```
 
 ## Deployment
 
-The project can be deployed to various cloud platforms. See the `deployment/` folder for detailed deployment guides:
-
-- **AWS**: ECS Fargate + EventBridge + RDS (see `deployment/AWS_DEPLOYMENT.md`)
-- **Google Cloud**: Cloud Run + Cloud SQL (see `deployment/GCP_DEPLOYMENT.md`)
-- **General Cloud**: Step-by-step guide for any cloud provider (see `deployment/GENERAL_CLOUD_DEPLOYMENT.md`)
-
-### Docker
-
-**For local development with database:**
-
-Use Docker Compose to run both the application and PostgreSQL:
-```bash
-cd deployment
-docker-compose up -d
-```
-
-**For standalone container:**
-
-Build and run:
-```bash
-docker build -f deployment/Dockerfile -t ai-frontier .
-docker run --env-file .env ai-frontier
-```
-
-**Note**: See `deployment/README.md` for details on Docker Compose vs cloud deployments.
-
-## Key Features
-
-- **Modular Architecture**: Base classes make it easy to extend
-- **Scraper Registry**: Add new sources with minimal code
-- **LLM-Powered**: Uses Google Gemini for summarization and curation
-- **Personalized**: User profile-based ranking
-- **Duplicate Prevention**: Tracks sent digests
-- **Environment Aware**: Supports LOCAL and PRODUCTION environments
+See `deployment/` folder for cloud deployment guides:
+- **AWS**: ECS Fargate + EventBridge + RDS
+- **Google Cloud**: Cloud Run + Cloud SQL
+- **General Cloud**: Step-by-step guide
 
 ## Technology Stack
 
 - **Python 3.11+**: Core language
 - **PostgreSQL**: Database
 - **SQLAlchemy**: ORM
-- **Pydantic**: Data validation
 - **Google Gemini API**: LLM processing
-- **feedparser**: RSS parsing
-- **youtube-transcript-api**: Video transcripts
+- **AWS SES**: Email delivery
+- **Gradio**: User interface
 - **UV**: Package management
 
 ## License
