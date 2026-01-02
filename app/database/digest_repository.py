@@ -28,6 +28,7 @@ class DigestRepository(BaseRepository):
         summary: str,
         relevance_score: Optional[float] = None,
         reasoning: Optional[str] = None,
+        category: Optional[str] = None,
         published_at: Optional[datetime] = None,
     ) -> Optional[Digest]:
         """
@@ -41,6 +42,7 @@ class DigestRepository(BaseRepository):
             summary: Digest summary
             relevance_score: Relevance score (0.0-10.0) for user profile
             reasoning: Brief explanation of relevance score
+            category: Content category (technique, research, education, etc.)
             published_at: Publication datetime (optional)
             
         Returns:
@@ -67,6 +69,7 @@ class DigestRepository(BaseRepository):
             summary=summary,
             relevance_score=relevance_score,
             reasoning=reasoning,
+            category=category,
             created_at=created_at,
         )
         self.session.add(digest)
@@ -104,6 +107,7 @@ class DigestRepository(BaseRepository):
                 "summary": d.summary,
                 "relevance_score": d.relevance_score,
                 "reasoning": d.reasoning,
+                "category": d.category,
                 "created_at": d.created_at,
                 "sent_at": d.sent_at,
             }
@@ -139,3 +143,20 @@ class DigestRepository(BaseRepository):
         """
         digests = self.session.query(Digest).all()
         return {f"{d.article_type}:{d.article_id}" for d in digests}
+    
+    def get_recent_digest_ids(self, hours: int = 24) -> set:
+        """
+        Get digest IDs for digests created within the last N hours.
+        More efficient than get_all_digest_ids() when only recent digests matter.
+        
+        Args:
+            hours: Number of hours to look back
+            
+        Returns:
+            Set of digest IDs in format "article_type:article_id"
+        """
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+        digests = self.session.query(Digest).filter(
+            Digest.created_at >= cutoff_time
+        ).all()
+        return {d.id for d in digests}  # d.id is already in format "article_type:article_id"

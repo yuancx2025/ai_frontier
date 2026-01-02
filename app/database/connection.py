@@ -22,7 +22,7 @@ def get_database_url() -> str:
     password = os.getenv("POSTGRES_PASSWORD", "postgres")
     host = os.getenv("POSTGRES_HOST", "localhost")
     port = os.getenv("POSTGRES_PORT", "5433")
-    db = os.getenv("POSTGRES_DB", "ai_news_aggregator")
+    db = os.getenv("POSTGRES_DB", "ai-frontiers")
     return f"postgresql://{user}:{password}@{host}:{port}/{db}"
 
 

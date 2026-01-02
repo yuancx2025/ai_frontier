@@ -17,11 +17,13 @@ from .models import (
     YouTubeVideo,
     Article,
     Digest,
+    User,
 )
 from .base_repository import BaseRepository
 from .article_repository import ArticleRepository
 from .youtube_repository import YouTubeRepository
 from .digest_repository import DigestRepository
+from .user_repository import UserRepository
 
 __all__ = [
     # Connection
@@ -37,9 +39,11 @@ __all__ = [
     "YouTubeVideo",
     "Article",
     "Digest",
+    "User",
     # Repositories
     "BaseRepository",
     "ArticleRepository",
     "YouTubeRepository",
     "DigestRepository",
+    "UserRepository",
 ]

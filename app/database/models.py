@@ -1,6 +1,7 @@
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, Text, Index, Float
+from sqlalchemy import Column, String, DateTime, Text, Index, Float, Boolean, JSON
 from sqlalchemy.orm import declarative_base
+import uuid
 
 Base = declarative_base()
 
@@ -51,5 +52,25 @@ class Digest(Base):
     summary = Column(Text, nullable=False)
     relevance_score = Column(Float, nullable=True)
     reasoning = Column(Text, nullable=True)
+    category = Column(String, nullable=True)  # Content category: technique, research, education, etc.
     created_at = Column(DateTime, default=datetime.utcnow)
     sent_at = Column(DateTime, nullable=True)
+
+
+class User(Base):
+    """
+    User profile model for storing user preferences and settings.
+    """
+    __tablename__ = "users"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    email = Column(String, unique=True, nullable=False, index=True)
+    name = Column(String, nullable=False)
+    title = Column(String, nullable=True)
+    background = Column(Text, nullable=True)
+    content_preferences = Column(JSON, nullable=True)  # List of selected content categories
+    preferences = Column(JSON, nullable=True)  # Dictionary of preference flags
+    expertise_level = Column(String, nullable=False, default="Medium")  # Beginner, Medium, Advanced
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
