@@ -6,7 +6,8 @@ load_dotenv()
 from app.agent.email_agent import EmailAgent, RankedArticleDetail, EmailDigestResponse
 from app.profiles.user_profile import USER_PROFILE
 from app.database.digest_repository import DigestRepository
-from app.services.email import send_email, digest_to_html
+from app.services.ses_email import send_email
+from app.email.render import digest_to_html
 
 logging.basicConfig(
     level=logging.INFO,
@@ -63,6 +64,7 @@ def generate_email_digest(hours: int = 24, top_n: int = 10) -> EmailDigestRespon
             summary=d["summary"],
             url=d["url"],
             article_type=d["article_type"],
+            category=d.get("category"),
         )
         for idx, d in enumerate(scored_digests)
     ]
@@ -99,7 +101,24 @@ def send_digest_email(hours: int = 24, top_n: int = 10) -> dict:
 
         subject = f"Daily AI News Digest - {result.introduction.greeting.split('for ')[-1] if 'for ' in result.introduction.greeting else 'Today'}"
 
-        send_email(subject=subject, body_text=markdown_content, body_html=html_content)
+        # Get recipient email from database user or fall back to SES_FROM_EMAIL
+        from app.database.user_repository import UserRepository
+        import os
+        
+        user_repo = UserRepository()
+        default_user = user_repo.get_default_user()
+        
+        if default_user:
+            recipients = [default_user.email]
+        else:
+            # Fallback to SES_FROM_EMAIL if no user in database
+            ses_from_email = os.getenv("SES_FROM_EMAIL")
+            if not ses_from_email:
+                raise ValueError("No user found in database and SES_FROM_EMAIL is not set")
+            recipients = [ses_from_email]
+            logger.warning(f"No user found in database, using SES_FROM_EMAIL: {ses_from_email}")
+
+        send_email(subject=subject, body_text=markdown_content, body_html=html_content, recipients=recipients)
 
         digest_ids = [article.digest_id for article in result.articles]
         marked_count = digests_repo.mark_digests_as_sent(digest_ids)
