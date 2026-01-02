@@ -26,6 +26,9 @@ class DigestProcessor(BaseProcessService):
         self.hours = hours
 
     def get_items_to_process(self, limit: Optional[int] = None) -> list:
+        # Get existing digest IDs for the time window (more efficient)
+        existing_digest_ids = self.digests_repo.get_recent_digest_ids(hours=self.hours)
+        
         # Get articles from RSS feeds
         articles = self.articles_repo.get_recent_articles(hours=self.hours, limit=limit)
         
@@ -35,11 +38,22 @@ class DigestProcessor(BaseProcessService):
         # Combine both sources
         all_items = articles + youtube_videos
         
-        # Apply limit to combined list if specified
-        if limit:
-            all_items = all_items[:limit]
+        # Filter out items that already have digests
+        filtered_items = [
+            item for item in all_items
+            if f"{item['type']}:{item['id']}" not in existing_digest_ids
+        ]
         
-        return all_items
+        # Log how many were filtered out
+        filtered_count = len(all_items) - len(filtered_items)
+        if filtered_count > 0:
+            logging.info(f"Filtered out {filtered_count} items that already have digests")
+        
+        # Apply limit to filtered list if specified
+        if limit:
+            filtered_items = filtered_items[:limit]
+        
+        return filtered_items
 
     def process_item(self, item: dict) -> Optional[CuratorDigestOutput]:
         return self.agent.generate_digest_with_score(
@@ -50,7 +64,7 @@ class DigestProcessor(BaseProcessService):
 
     def save_result(self, item: dict, result: CuratorDigestOutput) -> bool:
         try:
-            self.digests_repo.create_digest(
+            digest = self.digests_repo.create_digest(
                 article_type=item["type"],
                 article_id=item["id"],
                 url=item["url"],
@@ -58,10 +72,16 @@ class DigestProcessor(BaseProcessService):
                 summary=result.summary,
                 relevance_score=result.relevance_score,
                 reasoning=result.reasoning,
+                category=result.category,
                 published_at=item.get("published_at")
             )
+            if digest is None:
+                # Duplicate digest (already exists)
+                logging.warning(f"Digest already exists for {item['type']}:{item['id']}")
+                return False
             return True
-        except Exception:
+        except Exception as e:
+            logging.error(f"Error saving digest for {item.get('type', 'unknown')}:{item.get('id', 'unknown')}: {e}", exc_info=True)
             return False
 
     def _get_item_id(self, item: dict) -> str:
