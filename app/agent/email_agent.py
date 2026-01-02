@@ -18,6 +18,7 @@ class RankedArticleDetail(BaseModel):
     summary: str
     url: str
     article_type: str
+    category: Optional[str] = None
     reasoning: Optional[str] = None
 
 
