@@ -58,4 +58,5 @@ COPY . .
 # Set Lambda handler entry point
 # Lambda will call lambda_handler() in this file
 # The actual handler is selected via LAMBDA_HANDLER env var
+# For container images, CMD should be the handler module.function path
 CMD ["lambda_handlers.entrypoint.lambda_handler"]
