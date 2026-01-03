@@ -17,12 +17,20 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def generate_email_digest(hours: int = 24, top_n: int = 10) -> EmailDigestResponse:
+def generate_email_digest(hours: int = 24, top_n: int = 10, user_profile: dict = None) -> EmailDigestResponse:
     """
     Generate email digest from digests that already have relevance scores.
     Digests are sorted by relevance_score (descending) and top N are selected.
+    
+    Args:
+        hours: Number of hours to look back for digests
+        top_n: Number of top articles to include
+        user_profile: User profile for personalized email generation (defaults to USER_PROFILE)
     """
-    email_agent = EmailAgent(USER_PROFILE)
+    if user_profile is None:
+        user_profile = USER_PROFILE
+    
+    email_agent = EmailAgent(user_profile)
     digests_repo = DigestRepository()
 
     digests = digests_repo.get_recent_digests(hours=hours)
@@ -82,6 +90,10 @@ def generate_email_digest(hours: int = 24, top_n: int = 10) -> EmailDigestRespon
 
 
 def send_digest_email(hours: int = 24, top_n: int = 10) -> dict:
+    """
+    Send digest email to default user (backward compatibility).
+    For multi-user scenarios, use send_digest_email_for_user instead.
+    """
     digests_repo = DigestRepository()
     digests = digests_repo.get_recent_digests(hours=hours)
 
@@ -133,6 +145,76 @@ def send_digest_email(hours: int = 24, top_n: int = 10) -> dict:
     except ValueError as e:
         logger.error(f"Error sending email: {e}")
         return {"success": False, "error": str(e)}
+
+
+def send_digest_email_for_user(
+    hours: int = 24, 
+    top_n: int = 10,
+    user_email: str = None,
+    user_profile: dict = None
+) -> dict:
+    """
+    Send personalized email digest to a specific user.
+    
+    Args:
+        hours: Number of hours to look back for digests
+        top_n: Number of top articles to include
+        user_email: Email address of the recipient (required)
+        user_profile: User profile dictionary for personalized digest generation
+        
+    Returns:
+        Dictionary with success status and details
+    """
+    digests_repo = DigestRepository()
+    digests = digests_repo.get_recent_digests(hours=hours)
+
+    if len(digests) == 0:
+        logger.info(f"No new digests to send to {user_email}. Skipping.")
+        return {
+            "success": True,
+            "skipped": True,
+            "message": "No new digests available",
+            "articles_count": 0,
+            "user_email": user_email,
+        }
+
+    if not user_email:
+        raise ValueError("user_email is required for send_digest_email_for_user")
+
+    try:
+        # Generate personalized digest using user profile
+        result = generate_email_digest(hours=hours, top_n=top_n, user_profile=user_profile)
+        markdown_content = result.to_markdown()
+        html_content = digest_to_html(result)
+
+        subject = f"Daily AI News Digest - {result.introduction.greeting.split('for ')[-1] if 'for ' in result.introduction.greeting else 'Today'}"
+
+        # Send to specific user
+        send_email(
+            subject=subject, 
+            body_text=markdown_content, 
+            body_html=html_content, 
+            recipients=[user_email]
+        )
+
+        digest_ids = [article.digest_id for article in result.articles]
+        marked_count = digests_repo.mark_digests_as_sent(digest_ids)
+
+        logger.info(f"Email sent successfully to {user_email}! Marked {marked_count} digests as sent.")
+        return {
+            "success": True,
+            "subject": subject,
+            "articles_count": len(result.articles),
+            "marked_as_sent": marked_count,
+            "user_email": user_email,
+        }
+    except Exception as e:
+        logger.error(f"Error sending email to {user_email}: {e}", exc_info=True)
+        return {
+            "success": False, 
+            "error": str(e),
+            "user_email": user_email,
+        }
 
 
 if __name__ == "__main__":
