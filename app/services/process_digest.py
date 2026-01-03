@@ -107,6 +107,25 @@ def process_digests(hours: int = 24, limit: Optional[int] = None, user_profile: 
     return processor.process(limit=limit)
 
 
+def process_digests_for_user(hours: int = 24, user_profile: dict = None, limit: Optional[int] = None) -> dict:
+    """
+    Process digests for a specific user profile.
+    This is a convenience wrapper for multi-user scenarios.
+    
+    Args:
+        hours: Number of hours to look back for articles (default: 24)
+        user_profile: User profile dictionary for personalized relevance scoring
+        limit: Maximum number of articles to process
+        
+    Returns:
+        Dictionary with processing results (total, processed, failed)
+    """
+    if user_profile is None:
+        user_profile = USER_PROFILE
+    
+    return process_digests(hours=hours, limit=limit, user_profile=user_profile)
+
+
 if __name__ == "__main__":
     result = process_digests()
     print(f"Total articles: {result['total']}")
